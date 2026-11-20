@@ -243,6 +243,35 @@ def ai_quick_reply():
 
 
 # =========================
+# 用藥注意事項小幫手（Gemini）負責：@114150
+# 確認藥物後，依照住戶的藥給白話注意事項
+# =========================
+MED_NOTICE_RULES = """你是社宅長輩的用藥衛教小幫手，請用繁體中文回答。
+使用者會給你他領到的藥名（可能不只一種），請依照以下規則回覆：
+1. 每種藥最多列出 3 點服藥注意事項，每點一句話、20 字左右
+2. 用長輩聽得懂的口語，不要用專有名詞
+3. 不要提供任何劑量數字，劑量請以藥袋為準
+4. 不確定的內容不要寫，不可編造
+5. 最後加上一次：「以藥袋和藥師說明為準，有疑問請問藥師。」"""
+
+def get_med_notice(drug_names):
+    try:
+        response = client.models.generate_content(
+            model="gemini-3.1-flash-lite",
+            contents=drug_names,
+            config=types.GenerateContentConfig(
+                system_instruction=MED_NOTICE_RULES,
+                temperature=0.3,
+                max_output_tokens=800,
+            ),
+        )
+        answer = (response.text or "").strip()
+        return answer if answer else None
+    except Exception as e:
+        print("[Gemini error]", str(e))
+        return None
+
+# =========================
 # 共用：主選單 Quick Reply
 # =========================
 def main_menu_quick_reply():
@@ -797,24 +826,29 @@ def linebot():
                     )
 
                 # ---------------------------------
-                # 藥物正確
+                # 藥物正確 → AI 依照住戶的藥給注意事項（@114150）
                 # ---------------------------------
                 elif received_text == "藥物正確":
+                    ai_notice = get_med_notice(MY_MEDICINES)
+                    if ai_notice:
+                        notice_text = "💡 您這次的藥要注意：\n" + ai_notice
+                    else:
+                        # AI 出錯時，退回原本的通用提醒
+                        notice_text = (
+                            "💡 用藥注意事項\n"
+                            "• 請按照指定時間與劑量服用\n"
+                            "• 不要自行增加或減少劑量\n"
+                            "• 不要自行停藥\n"
+                            "• 若服藥後出現明顯不適，請聯絡醫療人員\n"
+                            "• 若對藥物有疑問，請詢問醫師或藥師"
+                        )
                     reply_msg.append(
                         TextMessage(
-                            text=(
-                                "✅ 藥物確認完成\n\n"
-                                "請依照醫師處方及藥袋上的指示服用。\n\n"
-                                "💡 用藥注意事項\n"
-                                "• 請按照指定時間與劑量服用\n"
-                                "• 不要自行增加或減少劑量\n"
-                                "• 不要自行停藥\n"
-                                "• 若服藥後出現明顯不適，請聯絡醫療人員\n"
-                                "• 若對藥物有疑問，請詢問醫師或藥師"
-                            ),
+                            text="✅ 藥物確認完成\n\n" + notice_text,
                             quick_reply=main_menu_quick_reply()
                         )
                     )
+
 
                 # ---------------------------------
                 # 藥物錯誤
