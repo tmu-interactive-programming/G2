@@ -8,7 +8,14 @@
 """
 import os
 
-from linebot.v3.messaging import MessageAction, QuickReply, QuickReplyItem, TextMessage
+from linebot.v3.messaging import (
+    FlexContainer,
+    FlexMessage,
+    MessageAction,
+    QuickReply,
+    QuickReplyItem,
+    TextMessage,
+)
 
 NAME = "用藥注意事項"
 AUTHOR = "@114150"
@@ -16,6 +23,13 @@ KEYWORDS = ["注意", "用藥注意"]
 
 # 還沒串藥物資料前，先用組上「我的藥物」的那三種
 MY_MEDICINES = ["高血壓藥", "高血脂藥", "糖尿病藥"]
+
+# 卡片上每個藥的圖示和顏色（長輩看顏色比較好認）
+MED_STYLE = {
+    "高血壓藥": ("❤️", "#E05A47"),
+    "高血脂藥": ("🧈", "#E89A2C"),
+    "糖尿病藥": ("🍬", "#3B82C4"),
+}
 
 # 給 AI 看的說明書（每種藥都用同一套）
 RULES = """你是社宅長輩的用藥衛教小幫手，請用繁體中文回答。
@@ -39,13 +53,63 @@ ENDING = "\n\n以藥袋和藥師說明為準，有疑問請問藥師 🙏"
 
 
 def medicine_buttons():
-    # 每個藥一顆按鈕，點了會自動送出「注意事項 藥名」，長輩不用打字
+    # 回答下方的小按鈕，點了會自動送出「注意事項 藥名」，長輩不用打字
     items = [
         QuickReplyItem(action=MessageAction(label=med, text=f"注意事項 {med}"))
         for med in MY_MEDICINES
     ]
     items.append(QuickReplyItem(action=MessageAction(label="全部的藥", text="注意事項 全部")))
     return QuickReply(items=items)
+
+
+def medicine_card():
+    # 一張漂亮的選單卡片：每個藥一顆大大的彩色按鈕
+    buttons = []
+    for med in MY_MEDICINES:
+        icon, color = MED_STYLE.get(med, ("💊", "#2E8B7A"))
+        buttons.append({
+            "type": "button",
+            "style": "primary",
+            "color": color,
+            "height": "md",
+            "action": {"type": "message", "label": f"{icon} {med}", "text": f"注意事項 {med}"},
+        })
+    buttons.append({
+        "type": "button",
+        "style": "secondary",
+        "height": "md",
+        "action": {"type": "message", "label": "📋 全部的藥一起看", "text": "注意事項 全部"},
+    })
+
+    card = {
+        "type": "bubble",
+        "header": {
+            "type": "box",
+            "layout": "vertical",
+            "backgroundColor": "#2E8B7A",
+            "paddingAll": "18px",
+            "contents": [
+                {"type": "text", "text": "💊 用藥注意事項", "weight": "bold", "size": "xl", "color": "#FFFFFF"},
+                {"type": "text", "text": "AI 用白話說給您聽", "size": "sm", "color": "#D9F2EC", "margin": "sm"},
+            ],
+        },
+        "body": {
+            "type": "box",
+            "layout": "vertical",
+            "spacing": "md",
+            "contents": [
+                {"type": "text", "text": "想看哪個藥要注意什麼？\n點一下就好 👇", "wrap": True, "size": "md", "color": "#333333"},
+            ] + buttons,
+        },
+        "footer": {
+            "type": "box",
+            "layout": "vertical",
+            "contents": [
+                {"type": "text", "text": "其他的藥：打「注意 藥名」\n例如：注意 普拿疼", "wrap": True, "size": "xs", "color": "#888888"},
+            ],
+        },
+    }
+    return FlexMessage(alt_text="用藥注意事項：請選擇藥物", contents=FlexContainer.from_dict(card))
 
 
 def _get_api_key():
@@ -96,12 +160,9 @@ def handle(text, user_id):
         drug = drug.replace(k, "")
     drug = drug.strip(" ：:，,的")
 
-    # 沒打藥名 → 跳出按鈕讓他點
+    # 沒打藥名 → 跳出彩色卡片讓他點
     if drug == "":
-        return [TextMessage(
-            text="想看哪個藥要注意什麼？\n點下面的按鈕就可以了 👇",
-            quick_reply=medicine_buttons(),
-        )]
+        return [medicine_card()]
 
     if drug == "全部":
         drug = "、".join(MY_MEDICINES)
