@@ -7,6 +7,8 @@
   打「注意 普拿疼」    → 直接解釋普拿疼
 """
 import os
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import TimeoutError as FutureTimeout
 
 from linebot.v3.messaging import (
     FlexContainer,
@@ -128,6 +130,20 @@ def _get_api_key():
 API_KEY = _get_api_key()
 
 
+AI_TIMEOUT_SECONDS = 20  # 測試時發現 AI 有時要等 1～3 分鐘，長輩等不了，所以最多等 20 秒
+_pool = ThreadPoolExecutor(max_workers=4)
+
+
+def ask_gemini_with_timeout(drug_names):
+    # 讓 AI 在背景想，超過 20 秒就先放棄，回 "TIMEOUT"
+    future = _pool.submit(ask_gemini, drug_names)
+    try:
+        return future.result(timeout=AI_TIMEOUT_SECONDS)
+    except FutureTimeout:
+        print("[med_notice] AI 超過", AI_TIMEOUT_SECONDS, "秒沒回，先給通用提醒")
+        return "TIMEOUT"
+
+
 def ask_gemini(drug_names):
     # 沒有金鑰就不問 AI，回 None 讓下面用通用提醒
     if not API_KEY:
@@ -167,8 +183,10 @@ def handle(text, user_id):
     if drug == "全部":
         drug = "、".join(MY_MEDICINES)
 
-    answer = ask_gemini(drug)
-    if answer:
+    answer = ask_gemini_with_timeout(drug)
+    if answer == "TIMEOUT":
+        body = "⏳ AI 現在有點忙，請過一下再問一次喔\n\n先給您通用的提醒：\n" + BACKUP_NOTICE
+    elif answer:
         body = f"💊 {drug} 要注意：\n" + answer[:3000]
     else:
         body = BACKUP_NOTICE
