@@ -62,7 +62,6 @@ def medicine_buttons():
         QuickReplyItem(action=MessageAction(label=med, text=f"注意事項 {med}"))
         for med in MY_MEDICINES
     ]
-    items.append(QuickReplyItem(action=MessageAction(label="全部的藥", text="注意事項 全部")))
     return QuickReply(items=items)
 
 
@@ -78,12 +77,6 @@ def medicine_card():
             "height": "md",
             "action": {"type": "message", "label": f"{icon} {med}", "text": f"注意事項 {med}"},
         })
-    buttons.append({
-        "type": "button",
-        "style": "secondary",
-        "height": "md",
-        "action": {"type": "message", "label": "📋 全部的藥一起看", "text": "注意事項 全部"},
-    })
 
     card = {
         "type": "bubble",
@@ -222,9 +215,6 @@ def handle(text, user_id):
     # 沒打藥名 → 跳出彩色卡片讓他點
     if drug == "":
         return [medicine_card()]
-
-    if drug == "全部":
-        drug = "、".join(MY_MEDICINES)
 
     show_thinking(user_id)  # 先讓聊天室出現「...」，長輩就知道要等
     answer = ask_gemini_with_timeout(drug)
