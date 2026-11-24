@@ -167,6 +167,15 @@ def ask_gemini_with_timeout(drug_names):
         return "TIMEOUT"
 
 
+# 測試時發現 Gemini 常常 503 塞車，所以準備備用模型：第一個塞車就換下一個
+MODELS = [
+    "gemini-3.1-flash-lite",
+    "gemini-3.5-flash-lite",
+    "gemini-2.5-flash-lite",
+    "gemini-2.5-flash",
+]
+
+
 def ask_gemini(drug_names):
     # 沒有金鑰就不問 AI，回 None 讓下面用通用提醒
     if not API_KEY:
@@ -174,22 +183,32 @@ def ask_gemini(drug_names):
     try:
         from google import genai
         from google.genai import types
-
         client = genai.Client(api_key=API_KEY)
-        response = client.models.generate_content(
-            model="gemini-3.1-flash-lite",
-            contents=drug_names,
-            config=types.GenerateContentConfig(
-                system_instruction=RULES,
-                temperature=0.3,  # 醫療資訊要穩定，不要 AI 亂打
-                max_output_tokens=800,
-            ),
-        )
-        answer = (response.text or "").strip()
-        return answer or None
     except Exception as e:
-        print("[med_notice] Gemini 出錯：", repr(e))
+        print("[med_notice] Gemini 連線失敗：", repr(e))
         return None
+
+    busy = False
+    for model in MODELS:
+        try:
+            response = client.models.generate_content(
+                model=model,
+                contents=drug_names,
+                config=types.GenerateContentConfig(
+                    system_instruction=RULES,
+                    temperature=0.3,  # 醫療資訊要穩定，不要 AI 亂打
+                    max_output_tokens=800,
+                ),
+            )
+            answer = (response.text or "").strip()
+            if answer:
+                print("[med_notice] 用", model, "回答成功")
+                return answer
+        except Exception as e:
+            print("[med_notice]", model, "出錯，換下一個：", repr(e)[:120])
+            if "503" in repr(e) or "429" in repr(e):
+                busy = True
+    return "BUSY" if busy else None
 
 
 def handle(text, user_id):
@@ -208,7 +227,7 @@ def handle(text, user_id):
 
     show_thinking(user_id)  # 先讓聊天室出現「...」，長輩就知道要等
     answer = ask_gemini_with_timeout(drug)
-    if answer == "TIMEOUT":
+    if answer in ("TIMEOUT", "BUSY"):
         body = "⏳ AI 現在有點忙，請過一下再問一次喔\n\n先給您通用的提醒：\n" + BACKUP_NOTICE
     elif answer:
         body = f"💊 {drug} 要注意：\n" + answer[:3000]
