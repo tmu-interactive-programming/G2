@@ -2,20 +2,20 @@
 用藥注意事項小幫手（第 8 步）
 領完藥之後，用 Gemini 把藥的注意事項講成長輩聽得懂的話。
 
-用法：
-  「注意事項 普拿疼」 → 解釋普拿疼
-  「注意事項」        → 解釋組上預設的藥
+用法（長輩打字不方便，所以盡量用按鈕）：
+  打「注意」          → 跳出藥物按鈕，點一下就好
+  打「注意 普拿疼」    → 直接解釋普拿疼
 """
 import os
 
-from linebot.v3.messaging import TextMessage
+from linebot.v3.messaging import MessageAction, QuickReply, QuickReplyItem, TextMessage
 
 NAME = "用藥注意事項"
 AUTHOR = "@114150"
-KEYWORDS = ["注意事項", "用藥注意"]
+KEYWORDS = ["注意", "用藥注意"]
 
 # 還沒串藥物資料前，先用組上「我的藥物」的那三種
-DEFAULT_MEDICINES = "高血壓藥、高血脂藥、糖尿病藥"
+MY_MEDICINES = ["高血壓藥", "高血脂藥", "糖尿病藥"]
 
 # 給 AI 看的說明書（每種藥都用同一套）
 RULES = """你是社宅長輩的用藥衛教小幫手，請用繁體中文回答。
@@ -36,6 +36,16 @@ BACKUP_NOTICE = (
     "• 吃藥後很不舒服，請聯絡醫療人員"
 )
 ENDING = "\n\n以藥袋和藥師說明為準，有疑問請問藥師 🙏"
+
+
+def medicine_buttons():
+    # 每個藥一顆按鈕，點了會自動送出「注意事項 藥名」，長輩不用打字
+    items = [
+        QuickReplyItem(action=MessageAction(label=med, text=f"注意事項 {med}"))
+        for med in MY_MEDICINES
+    ]
+    items.append(QuickReplyItem(action=MessageAction(label="全部的藥", text="注意事項 全部")))
+    return QuickReply(items=items)
 
 
 def _get_api_key():
@@ -80,15 +90,21 @@ def ask_gemini(drug_names):
 
 
 def handle(text, user_id):
-    # 把關鍵字拿掉，剩下的就是藥名
+    # 把關鍵字拿掉，剩下的就是藥名（長的先拿掉，不然「注意事項」會剩下「事項」）
     drug = text
-    for k in KEYWORDS:
+    for k in ["注意事項", "用藥注意", "注意"]:
         drug = drug.replace(k, "")
-    drug = drug.strip(" ：:，,")
+    drug = drug.strip(" ：:，,的")
 
-    # 沒打藥名就用預設的藥
+    # 沒打藥名 → 跳出按鈕讓他點
     if drug == "":
-        drug = DEFAULT_MEDICINES
+        return [TextMessage(
+            text="想看哪個藥要注意什麼？\n點下面的按鈕就可以了 👇",
+            quick_reply=medicine_buttons(),
+        )]
+
+    if drug == "全部":
+        drug = "、".join(MY_MEDICINES)
 
     answer = ask_gemini(drug)
     if answer:
@@ -96,4 +112,5 @@ def handle(text, user_id):
     else:
         body = BACKUP_NOTICE
 
-    return [TextMessage(text=body + ENDING)]
+    # 回答完也附上按鈕，方便接著看別的藥
+    return [TextMessage(text=body + ENDING, quick_reply=medicine_buttons())]
