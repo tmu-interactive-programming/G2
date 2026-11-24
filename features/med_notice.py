@@ -108,7 +108,7 @@ def medicine_card():
             "type": "box",
             "layout": "vertical",
             "contents": [
-                {"type": "text", "text": "⏳ 按下後 AI 大約 10～20 秒回覆\n看到「...」就是在想，不用再傳一次喔", "wrap": True, "size": "sm", "color": "#2E8B7A", "weight": "bold"},
+                {"type": "text", "text": "⏳ 按下後 AI 大約 10～50 秒回覆\n看到「...」就是在想，不用再傳一次喔", "wrap": True, "size": "sm", "color": "#2E8B7A", "weight": "bold"},
                 {"type": "text", "text": "其他的藥：打「注意 藥名」\n例如：注意 普拿疼", "wrap": True, "size": "xs", "color": "#888888", "margin": "md"},
             ],
         },
@@ -132,7 +132,7 @@ def _get_api_key():
 API_KEY = _get_api_key()
 
 
-AI_TIMEOUT_SECONDS = 20  # 測試時發現 AI 有時要等 1～3 分鐘，長輩等不了，所以最多等 20 秒
+AI_TIMEOUT_SECONDS = 50  # 盡量等 AI 想完；但 LINE 的回覆機會大約 1 分鐘就過期，所以最多等 50 秒
 _pool = ThreadPoolExecutor(max_workers=4)
 
 
@@ -151,14 +151,14 @@ def show_thinking(user_id):
         )
         with ApiClient(Configuration(access_token=token)) as api_client:
             MessagingApi(api_client).show_loading_animation(
-                ShowLoadingAnimationRequest(chat_id=user_id, loading_seconds=AI_TIMEOUT_SECONDS)
+                ShowLoadingAnimationRequest(chat_id=user_id, loading_seconds=60)
             )
     except Exception as e:
         print("[med_notice] 思考動畫沒顯示：", repr(e))
 
 
 def ask_gemini_with_timeout(drug_names):
-    # 讓 AI 在背景想，超過 20 秒就先放棄，回 "TIMEOUT"
+    # 讓 AI 在背景想，超過 50 秒就先放棄，回 "TIMEOUT"
     future = _pool.submit(ask_gemini, drug_names)
     try:
         return future.result(timeout=AI_TIMEOUT_SECONDS)
