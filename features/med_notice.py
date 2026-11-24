@@ -6,6 +6,7 @@
   打「注意」          → 跳出藥物按鈕，點一下就好
   打「注意 普拿疼」    → 直接解釋普拿疼
 """
+import __main__
 import os
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FutureTimeout
@@ -107,7 +108,8 @@ def medicine_card():
             "type": "box",
             "layout": "vertical",
             "contents": [
-                {"type": "text", "text": "其他的藥：打「注意 藥名」\n例如：注意 普拿疼", "wrap": True, "size": "xs", "color": "#888888"},
+                {"type": "text", "text": "⏳ 按下後 AI 大約 10～20 秒回覆\n看到「...」就是在想，不用再傳一次喔", "wrap": True, "size": "sm", "color": "#2E8B7A", "weight": "bold"},
+                {"type": "text", "text": "其他的藥：打「注意 藥名」\n例如：注意 普拿疼", "wrap": True, "size": "xs", "color": "#888888", "margin": "md"},
             ],
         },
     }
@@ -132,6 +134,27 @@ API_KEY = _get_api_key()
 
 AI_TIMEOUT_SECONDS = 20  # 測試時發現 AI 有時要等 1～3 分鐘，長輩等不了，所以最多等 20 秒
 _pool = ThreadPoolExecutor(max_workers=4)
+
+
+def show_thinking(user_id):
+    # 在 LINE 聊天室顯示「...」思考動畫，讓長輩知道 AI 在想、不用再傳訊息
+    # access token 從環境變數或 Colab 步驟 4 的 access_token 拿（只讀，不寫進程式）
+    token = os.environ.get("LINE_CHANNEL_ACCESS_TOKEN") or getattr(__main__, "access_token", None)
+    if not token or not str(user_id).startswith("U"):
+        return
+    try:
+        from linebot.v3.messaging import (
+            ApiClient,
+            Configuration,
+            MessagingApi,
+            ShowLoadingAnimationRequest,
+        )
+        with ApiClient(Configuration(access_token=token)) as api_client:
+            MessagingApi(api_client).show_loading_animation(
+                ShowLoadingAnimationRequest(chat_id=user_id, loading_seconds=AI_TIMEOUT_SECONDS)
+            )
+    except Exception as e:
+        print("[med_notice] 思考動畫沒顯示：", repr(e))
 
 
 def ask_gemini_with_timeout(drug_names):
@@ -183,6 +206,7 @@ def handle(text, user_id):
     if drug == "全部":
         drug = "、".join(MY_MEDICINES)
 
+    show_thinking(user_id)  # 先讓聊天室出現「...」，長輩就知道要等
     answer = ask_gemini_with_timeout(drug)
     if answer == "TIMEOUT":
         body = "⏳ AI 現在有點忙，請過一下再問一次喔\n\n先給您通用的提醒：\n" + BACKUP_NOTICE
